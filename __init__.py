@@ -14,23 +14,26 @@ import re
 
 import PyPDF2
 
-
+# Dictionary of all the funds text in statement with their beancount
+# entry
 FUND_D = {
-     "L Income Fund" : "LInc",
-     "L 2020 Fund" : "L2020",
-     "L 2030 Fund" : "L2030",
-     "L 2040 Fund" : "L2040",
-     "L 2050 Fund" : "L2050",
-     "Common Stock Index Investment (C) Fund" : "CFund",
-     "Small Capitalization Stock Index Investment (S) Fund" : "SFund",
-     "International Stock Index Investment (I) Fund" : "IFund",
-     "Government Securities Investment (G) Fund" : "GFund", #Maybe?
-     "Fixed Income Index Investment (F) Fund" : "FFund", #Maybe?
+    "L Income Fund": "LInc",
+    "L 2020 Fund": "L2020",
+    "L 2030 Fund": "L2030",
+    "L 2040 Fund": "L2040",
+    "L 2050 Fund": "L2050",
+    "Common Stock Index Investment (C) Fund": "CFund",
+    "Small Capitalization Stock Index Investment (S) Fund": "SFund",
+    "International Stock Index Investment (I) Fund": "IFund",
+    "Government Securities Investment (G) Fund": "GFund",  # Maybe?
+    "Fixed Income Index Investment (F) Fund": "FFund",  # Maybe?
 }
 
-#TODO: Make this generate from the dictionary above.
+# TODO: Make this generate from the dictionary above.
 FUND_RE = '(?P<fund>L 2020|L 2050|International Stock Index Investment \(I\)|L 2040|Small Capitalization Stock Index Investment \(S\)|L 2030|Fixed Income Index Investment \(F\)|Government Securities Investment \(G\)|L Income|Common Stock Index Investment \(C\))(?P<data>.+?)(Ending Balance|Continued on next page)'
 
+# The Œ symbol is in here because the negative symbol sometimes shows
+# up as this when parsed by PyPDF2.
 TRXN_RE = '(?P<date>(\d{2}\/){2}\d{4})\s*(?P<desc>[\w\s]+?)\s*\${0,1}(?P<trad>(Œ|-){0,1}\s*([0-9]{0,3},)*[0-9]{0,3}\.[0-9]{2})\s*\${0,1}(?P<roth>(Œ|-){0,1}\s*([0-9]{0,3},)*[0-9]{0,3}\.[0-9]{2})\s*\${0,1}(?P<total>(Œ|-){0,1}\s*([0-9]{0,3},)*[0-9]{0,3}\.[0-9]{2})\s*\${0,1}(?P<price>(Œ|-){0,1}\s*([0-9]{0,3},)*[0-9]{0,3}\.[0-9]{4})\s*(?P<shares>(Œ|-){0,1}\s*([0-9]{0,3},)*[0-9]{0,3}\.[0-9]{4})'
 
 
@@ -51,6 +54,7 @@ class Importer(importer.ImporterProtocol):
 
         with open(f.name, 'rb') as pdf_file:
 
+            # Read in the PDF.
             read_pdf = PyPDF2.PdfFileReader(pdf_file)
 
             all_text = "".join(
@@ -63,6 +67,7 @@ class Importer(importer.ImporterProtocol):
 
             fund_match = [m.groupdict() for m in fund_re.finditer(all_text)]
 
+            # Go through finding fund by fund to add transactions.
             for index, row in enumerate(fund_match):
                 fund_text = row['fund'].strip()
                 text = row['data'].strip()
@@ -71,10 +76,11 @@ class Importer(importer.ImporterProtocol):
 
                 matches = [m.groupdict() for m in data_re.finditer(text)]
 
+                # For each transaction found, build the associated entry
+                # for addition to beancount.
                 for index, row in enumerate(matches):
 
                     trans_date = parse(row['date']).date()
-
                     trans_desc = titlecase(row['desc'].strip())
                     trans_amt = row['total'].replace("Œ", '-')
                     shares = row['shares'].replace("Œ", '-')
@@ -93,7 +99,7 @@ class Importer(importer.ImporterProtocol):
                     # Clean up the description to standardize naming.
                     # After fixed above, negative on amnt means purchase.
                     if ("contribution" in trans_desc.lower() and
-                        "-" in trans_amt):
+                       "-" in trans_amt):
                         trans_desc = fund.title() + " purchase"
 
                     txn = data.Transaction(
@@ -118,7 +124,6 @@ class Importer(importer.ImporterProtocol):
                             None,
                             None,
                             None))
-
 
                     txn.postings.append(
                         data.Posting(
