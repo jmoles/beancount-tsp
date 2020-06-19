@@ -7,8 +7,6 @@ from beancount.core import position
 
 from dateutil.parser import parse
 
-from titlecase import titlecase
-
 import os
 import re
 
@@ -81,7 +79,7 @@ class Importer(importer.ImporterProtocol):
                 for index, row in enumerate(matches):
 
                     trans_date = parse(row['date']).date()
-                    trans_desc = titlecase(row['desc'].strip())
+                    trans_desc = str.title(row['desc'].strip())
                     trans_amt = row['total'].replace("Œ", '-')
                     shares = row['shares'].replace("Œ", '-')
                     price = row['price'].replace("Œ", '-')
