@@ -11,17 +11,25 @@ from bs4 import BeautifulSoup
 DATAFILE = ".tspdata.p"
 TSP_URL = "https://www.tsp.gov/InvestmentFunds/FundPerformance/index.html"
 
+NO_PRICE = -100
+DESIRED_FUNDS = [6, 7, 12, 13, 14]
+
 STOCK_NAMES = [
     "TSPLInco", #0
-    "TSPL2020", #1
+    "TSPL2025", #1
     "TSPL2030", #2
-    "TSPL2040", #3
-    "TSPL2050", #4
-    "TSPGFund", #5
-    "TSPFFund", #6
-    "TSPCFund", #7
-    "TSPSFund", #8
-    "TSPIFund", #9
+    "TSPL2035", #3
+    "TSPL2040", #4
+    "TSPL2045", #5
+    "TSPL2050", #6
+    "TSPL2055", #7
+    "TSPL2060", #8
+    "TSPL2065", #9
+    "TSPGFund", #10
+    "TSPFFund", #11
+    "TSPCFund", #12
+    "TSPSFund", #13
+    "TSPIFund", #14
 ]
 
 
@@ -40,10 +48,15 @@ def parse_csv(filename):
             date = date.replace(hour=16)
             prices = [
                 float(row[' L Income']),
-                float(row[' L 2020']),
+                float(row[' L 2025']),
                 float(row[' L 2030']),
+                float(row[' L 2035']),
                 float(row[' L 2040']),
+                float(row[' L 2045']),
                 float(row[' L 2050']),
+                float(row[' L 2055']),
+                float(row[' L 2060']),
+                float(row[' L 2065']),
                 float(row[' G Fund']),
                 float(row[' F Fund']),
                 float(row[' C Fund']),
@@ -83,10 +96,16 @@ def parse_tsp_site(url):
 
         # Go through each cell and set the prices
         col_num = 0
-        prices = [0] * 10
+        prices = [0] * len(STOCK_NAMES)
         for cell in row.findAll('td'):
             if cell.has_attr('class') and 'packed' in cell.attrs['class']:
-                prices[col_num] = float(cell.contents[0].strip())
+                # Try and parse the value. If this is a new fund, the TSP
+                # csv files will often put "N/A" in the field. Just need to
+                # skip this one and move forward with parsing.
+                try:
+                    prices[col_num] = float(cell.contents[0].strip())
+                except ValueError:
+                    prices[col_num] = NO_PRICE
                 col_num += 1
 
         data[date] = prices
@@ -95,8 +114,8 @@ def parse_tsp_site(url):
 
 
 def merge_data(*dict_args):
-    """ Merges a set of dictionaries together by removing entires in subequent
-    dictionaies that already exists in predecessors.
+    """ Merges a set of dictionaries together by removing entires in subsequent
+    dictionaries that already exists in predecessors.
     """
 
     result = OrderedDict()
@@ -114,7 +133,7 @@ def merge_data(*dict_args):
                        reverse=True))
 
 
-def print_beancount(data, desired=[4, 5, 6, 7, 8, 9], filename="auto_tsp.beancount"):
+def print_beancount(data, desired=DESIRED_FUNDS, filename="auto_tsp.beancount"):
     """ Takes the output data with the desired columns and outputs them
     to a file ready for import to beancount.
     """
@@ -127,17 +146,21 @@ def print_beancount(data, desired=[4, 5, 6, 7, 8, 9], filename="auto_tsp.beancou
                 if idx not in desired:
                     continue
 
-                line_new = '{:} price {:<15} {:>8} USD\n'.format(
-                    date.strftime("%Y-%m-%d"),
-                    STOCK_NAMES[idx].upper(),
-                    price)
+                # Only print the line if not NO_PRICE. We set it to NO_PRICE above
+                # in the event the fund was N/A
+                if price != NO_PRICE:
+                    line_new = '{:} price {:<15} {:>8.4f} USD\n'.format(
+                        date.strftime("%Y-%m-%d"),
+                        STOCK_NAMES[idx].upper(),
+                        price)
 
-                fh.write(line_new)
+                    fh.write(line_new)
 
 
 if __name__ == '__main__':
 
     # Get the old data in, if necessary from a CSV.
+    p_import = None
     try:
         p_import = pickle.load(open(DATAFILE, "rb"))
     except (OSError, IOError) as e:
@@ -147,8 +170,12 @@ if __name__ == '__main__':
     # Now update the data from the web.
     web_data = parse_tsp_site(TSP_URL)
 
-    # Merge the two datasets back together
-    data = merge_data(web_data, p_import)
+    # Merge the two datasets back together, if there
+    # was a previous dataset.
+    if p_import:
+        data = merge_data(web_data, p_import)
+    else:
+        data = web_data
 
     # Save the output back to the pickle and beancount output file.
     pickle.dump(data, open(DATAFILE, "wb"))
