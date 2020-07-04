@@ -1,6 +1,7 @@
 # Local files for this project.
 .tspdata.p
 auto_tsp.beancount
+tspparser.ini
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -3,16 +3,33 @@ import csv
 from datetime import datetime
 import pickle
 from os.path import isfile
+from shutil import copyfile
 from urllib.request import urlopen
+import sys
+
+import configparser
 
 from bs4 import BeautifulSoup
 
+if not isfile('tspparser.ini'):
+    print("No configuration file exists. Copying the default...")
+    copyfile("tspparser.default.ini", "tspparser.ini")
 
-DATAFILE = ".tspdata.p"
-TSP_URL = "https://www.tsp.gov/InvestmentFunds/FundPerformance/index.html"
+config = configparser.ConfigParser()
+config.read("tspparser.ini")
+
+if config.getint('DEFAULT', 'version') != 1:
+    print("ERROR: Configuration file version is incorrect!")
+    print("       Please check you have the correct configuration file version.")
+    print("Exiting...")
+    sys.exit(1)
+
+DATAFILE = config['DEFAULT']['DataFile']
+TSP_URL = config['DEFAULT']['TspDataUrl']
+DESIRED_FUNDS = list(map(int,list(config['DEFAULT']['Funds'].split())))
+BEANOUT_FILE = config['DEFAULT']['BeanOut']
 
 NO_PRICE = -100
-DESIRED_FUNDS = [6, 7, 12, 13, 14]
 
 STOCK_NAMES = [
     "TSPLInco", #0
@@ -100,12 +117,10 @@ def parse_tsp_site(url):
         for cell in row.findAll('td'):
             if cell.has_attr('class') and 'packed' in cell.attrs['class']:
                 # Try and parse the value. If this is a new fund, the TSP
-                # csv files will often put "N/A" in the field. Just need to
+                # csv files will put "N/A" in the field. Just need to
                 # skip this one and move forward with parsing.
-                try:
+                if cell.contents[0].strip() != "N/A":
                     prices[col_num] = float(cell.contents[0].strip())
-                except ValueError:
-                    prices[col_num] = NO_PRICE
                 col_num += 1
 
         data[date] = prices
@@ -133,7 +148,7 @@ def merge_data(*dict_args):
                        reverse=True))
 
 
-def print_beancount(data, desired=DESIRED_FUNDS, filename="auto_tsp.beancount"):
+def print_beancount(data, desired=DESIRED_FUNDS, filename=BEANOUT_FILE):
     """ Takes the output data with the desired columns and outputs them
     to a file ready for import to beancount.
     """
@@ -146,9 +161,9 @@ def print_beancount(data, desired=DESIRED_FUNDS, filename="auto_tsp.beancount"):
                 if idx not in desired:
                     continue
 
-                # Only print the line if not NO_PRICE. We set it to NO_PRICE above
+                # Only print the line if not negative. We set it to NO_PRICE above
                 # in the event the fund was N/A
-                if price != NO_PRICE:
+                if price > 0:
                     line_new = '{:} price {:<15} {:>8.4f} USD\n'.format(
                         date.strftime("%Y-%m-%d"),
                         STOCK_NAMES[idx].upper(),
